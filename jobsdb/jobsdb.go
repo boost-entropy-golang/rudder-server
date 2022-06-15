@@ -1744,13 +1744,13 @@ func (jd *HandleT) renameDS(ds dataSetT) error {
 	var renamedJobTable = fmt.Sprintf(`%s%s`, preDropTablePrefix, ds.JobTable)
 	return jd.WithTx(func(tx *sql.Tx) error {
 		sqlStatement = fmt.Sprintf(`ALTER TABLE IF EXISTS "%s" RENAME TO "%s"`, ds.JobStatusTable, renamedJobStatusTable)
-		_, err := jd.dbHandle.Exec(sqlStatement)
+		_, err := tx.Exec(sqlStatement)
 		if err != nil {
 			return err
 		}
 
 		sqlStatement = fmt.Sprintf(`ALTER TABLE IF EXISTS "%s" RENAME TO "%s"`, ds.JobTable, renamedJobTable)
-		_, err = jd.dbHandle.Exec(sqlStatement)
+		_, err = tx.Exec(sqlStatement)
 		if err != nil {
 			return err
 		}
@@ -2257,7 +2257,7 @@ func (jd *HandleT) doStoreJobsInTx(tx *sql.Tx, ds dataSetT, jobList []*JobT) err
 			return err
 		}
 		if len(jobList) > jd.analyzeThreshold {
-			_, err = stmt.Exec(fmt.Sprintf("ANALYZE %s", ds.JobTable))
+			_, err = tx.Exec(fmt.Sprintf("ANALYZE %s", ds.JobTable))
 		}
 
 		return err
@@ -2883,7 +2883,7 @@ func (jd *HandleT) updateJobStatusDSInTx(tx *sql.Tx, ds dataSetT, statusList []*
 		}
 
 		if len(statusList) > jd.analyzeThreshold {
-			_, err = stmt.Exec(fmt.Sprintf("ANALYZE %s", ds.JobStatusTable))
+			_, err = tx.Exec(fmt.Sprintf("ANALYZE %s", ds.JobStatusTable))
 		}
 
 		return err

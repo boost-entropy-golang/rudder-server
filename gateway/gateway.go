@@ -45,7 +45,6 @@ import (
 	"github.com/rudderlabs/rudder-server/services/stats"
 	"github.com/rudderlabs/rudder-server/utils/logger"
 	"github.com/rudderlabs/rudder-server/utils/misc"
-	"github.com/rudderlabs/rudder-server/utils/pubsub"
 	"github.com/rudderlabs/rudder-server/utils/types"
 	warehouseutils "github.com/rudderlabs/rudder-server/warehouse/utils"
 )
@@ -309,16 +308,25 @@ func (gateway *HandleT) dbWriterWorkerProcess(process int) {
 		for _, userWorkerBatchRequest := range breq.batchUserWorkerBatchRequest {
 			jobList = append(jobList, userWorkerBatchRequest.jobList...)
 		}
-
-		if gwAllowPartialWriteWithErrors {
-			errorMessagesMap = gateway.jobsDB.StoreWithRetryEach(jobList)
-		} else {
-			err := gateway.jobsDB.Store(jobList)
-			if err != nil {
-				gateway.logger.Errorf("Store into gateway db failed with error: %v", err)
-				gateway.logger.Errorf("JobList: %+v", jobList)
-				panic(err)
+		err := gateway.jobsDB.WithStoreSafeTx(func(tx jobsdb.StoreSafeTx) error {
+			if gwAllowPartialWriteWithErrors {
+				errorMessagesMap = gateway.jobsDB.StoreWithRetryEachInTx(tx, jobList)
+			} else {
+				err := gateway.jobsDB.StoreInTx(tx, jobList)
+				if err != nil {
+					gateway.logger.Errorf("Store into gateway db failed with error: %v", err)
+					gateway.logger.Errorf("JobList: %+v", jobList)
+					return err
+				}
 			}
+
+			// rsources stats
+			rsourcesStats := rsources.NewStatsCollector(gateway.rsourcesService)
+			rsourcesStats.JobsStoredWithErrors(jobList, errorMessagesMap)
+			return rsourcesStats.Publish(context.TODO(), tx.Tx())
+		})
+		if err != nil {
+			panic(err)
 		}
 		gateway.dbWritesStat.Count(1)
 
@@ -574,13 +582,15 @@ func (gateway *HandleT) userWebRequestWorkerProcess(userWebRequestWorker *userWe
 			body, _ = sjson.SetBytes(body, "writeKey", writeKey)
 			body, _ = sjson.SetBytes(body, "receivedAt", time.Now().Format(misc.RFC3339Milli))
 			eventBatchesToRecord = append(eventBatchesToRecord, string(body))
-			sourcesJobRunID := gjson.GetBytes(body, "batch.0.context.sources.job_run_id").Str // pick the job_run_id from the first event of batch. We are assuming job_run_id will be same for all events in a batch and the batch is coming from rudder-sources
+			sourcesJobRunID := gjson.GetBytes(body, "batch.0.context.sources.job_run_id").Str   // pick the job_run_id from the first event of batch. We are assuming job_run_id will be same for all events in a batch and the batch is coming from rudder-sources
+			sourcesTaskRunID := gjson.GetBytes(body, "batch.0.context.sources.task_run_id").Str // pick the task_run_id from the first event of batch. We are assuming task_run_id will be same for all events in a batch and the batch is coming from rudder-sources
 			id := uuid.Must(uuid.NewV4())
 
 			params := map[string]interface{}{
-				"source_id":         sourceID,
-				"batch_id":          counter,
-				"source_job_run_id": sourcesJobRunID,
+				"source_id":          sourceID,
+				"batch_id":           counter,
+				"source_job_run_id":  sourcesJobRunID,
+				"source_task_run_id": sourcesTaskRunID,
 			}
 			marshalledParams, err := json.Marshal(params)
 			if err != nil {
@@ -1454,10 +1464,8 @@ func (gateway *HandleT) StartAdminHandler(ctx context.Context) error {
 
 // Gets the config from config backend and extracts enabled writekeys
 func (gateway *HandleT) backendConfigSubscriber() {
-	ch := make(chan pubsub.DataEvent)
-	gateway.backendConfig.Subscribe(ch, backendconfig.TopicProcessConfig)
-	for {
-		config := <-ch
+	ch := gateway.backendConfig.Subscribe(context.TODO(), backendconfig.TopicProcessConfig)
+	for config := range ch {
 		configSubscriberLock.Lock()
 		writeKeysSourceMap = map[string]backendconfig.SourceT{}
 		enabledWriteKeyWebhookMap = map[string]string{}

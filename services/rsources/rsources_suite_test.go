@@ -1,6 +1,4 @@
-//go:build integration
-
-package jobsdb_test
+package rsources
 
 import (
 	"testing"
@@ -9,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestJobsdb(t *testing.T) {
+func TestRsources(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Jobsdb Suite")
+	RunSpecs(t, "Rsources Suite")
 }

@@ -314,7 +314,11 @@ func (gateway *HandleT) dbWriterWorkerProcess() {
 		ctx, cancel := context.WithTimeout(context.Background(), WriteTimeout)
 		err := gateway.jobsDB.WithStoreSafeTx(func(tx jobsdb.StoreSafeTx) error {
 			if gwAllowPartialWriteWithErrors {
-				errorMessagesMap = gateway.jobsDB.StoreWithRetryEachInTx(ctx, tx, jobList)
+				var err error
+				errorMessagesMap, err = gateway.jobsDB.StoreWithRetryEachInTx(ctx, tx, jobList)
+				if err != nil {
+					return err
+				}
 			} else {
 				err := gateway.jobsDB.StoreInTx(ctx, tx, jobList)
 				if err != nil {
@@ -414,6 +418,12 @@ func (gateway *HandleT) getSourceTagFromWriteKey(writeKey string) string {
 //
 // Finally sends responses(error) if any back to the webRequests over their `done` channels
 func (gateway *HandleT) userWebRequestWorkerProcess(userWebRequestWorker *userWebRequestWorkerT) {
+	if userWebRequestWorker == nil {
+		panic("worker is nil")
+	}
+	if userWebRequestWorker.batchRequestQ == nil {
+		panic("batchRequestQ is nil")
+	}
 	for breq := range userWebRequestWorker.batchRequestQ {
 		counter := atomic.AddUint64(&gateway.webRequestBatchCount, 1)
 		var jobList []*jobsdb.JobT

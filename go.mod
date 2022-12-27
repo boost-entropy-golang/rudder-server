@@ -64,7 +64,7 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/viper v1.13.0
 	github.com/stretchr/testify v1.8.1
-	github.com/thoas/go-funk v0.9.1
+	github.com/thoas/go-funk v0.9.3
 	github.com/throttled/throttled/v2 v2.9.1
 	github.com/tidwall/gjson v1.14.3
 	github.com/tidwall/sjson v1.2.5

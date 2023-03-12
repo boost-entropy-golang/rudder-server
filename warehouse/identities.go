@@ -1,10 +1,13 @@
 package warehouse
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/rudderlabs/rudder-server/warehouse/logfield"
 
 	"github.com/rudderlabs/rudder-server/warehouse/integrations/manager"
 
@@ -130,20 +133,6 @@ func (wh *HandleT) getPendingPopulateIdentitiesLoad(warehouse warehouseutils.War
 	}
 	found = true
 	upload.UploadSchema = warehouseutils.JSONSchemaToMap(schema)
-
-	// TODO: remove this once the migration is complete
-	if upload.WorkspaceID == "" {
-		var ok bool
-		wh.workspaceBySourceIDsLock.RLock()
-		upload.WorkspaceID, ok = wh.workspaceBySourceIDs[upload.SourceID]
-		wh.workspaceBySourceIDsLock.RUnlock()
-
-		if !ok {
-			pkgLogger.Warnf("Workspace not found for source id: %q", upload.SourceID)
-		}
-
-	}
-
 	return
 }
 
@@ -424,7 +413,18 @@ func (wh *HandleT) populateHistoricIdentities(warehouse warehouseutils.Warehouse
 			Warehouse: warehouse,
 		}, whManager)
 
-		tableUploadsCreated := areTableUploadsCreated(job.upload.ID)
+		tableUploadsCreated, tableUploadsErr := job.tableUploadsRepo.ExistsForUploadID(context.TODO(), job.upload.ID)
+		if tableUploadsErr != nil {
+			pkgLogger.Warnw("table uploads exists",
+				logfield.UploadJobID, job.upload.ID,
+				logfield.SourceID, job.upload.SourceID,
+				logfield.DestinationID, job.upload.DestinationID,
+				logfield.DestinationType, job.upload.DestinationType,
+				logfield.WorkspaceID, job.upload.WorkspaceID,
+				logfield.Error, tableUploadsErr.Error(),
+			)
+			return
+		}
 		if !tableUploadsCreated {
 			err := job.initTableUploads()
 			if err != nil {

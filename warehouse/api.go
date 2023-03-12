@@ -267,7 +267,7 @@ func (uploadsReq *UploadsReqT) TriggerWhUploads() (response *proto.TriggerWhUplo
 	return
 }
 
-func (uploadReq UploadReqT) GetWHUpload() (*proto.WHUploadResponse, error) {
+func (uploadReq *UploadReqT) GetWHUpload() (*proto.WHUploadResponse, error) {
 	err := uploadReq.validateReq()
 	if err != nil {
 		return &proto.WHUploadResponse{}, status.Errorf(codes.Code(code.Code_INVALID_ARGUMENT), err.Error())
@@ -364,7 +364,7 @@ func (uploadReq UploadReqT) GetWHUpload() (*proto.WHUploadResponse, error) {
 	return &upload, nil
 }
 
-func (uploadReq UploadReqT) TriggerWHUpload() (response *proto.TriggerWhUploadsResponse, err error) {
+func (uploadReq *UploadReqT) TriggerWHUpload() (response *proto.TriggerWhUploadsResponse, err error) {
 	err = uploadReq.validateReq()
 	defer func() {
 		if err != nil {
@@ -377,8 +377,6 @@ func (uploadReq UploadReqT) TriggerWHUpload() (response *proto.TriggerWhUploadsR
 	if err != nil {
 		return
 	}
-
-	var uploadJobT UploadJobT
 
 	upload, err := repo.NewUploads(uploadReq.API.dbHandle).Get(context.TODO(), uploadReq.UploadId)
 	if err == model.ErrUploadNotFound {
@@ -398,8 +396,12 @@ func (uploadReq UploadReqT) TriggerWHUpload() (response *proto.TriggerWhUploadsR
 		return
 	}
 
-	uploadJobT.upload = upload
-	uploadJobT.dbHandle = uploadReq.API.dbHandle
+	uploadJobT := UploadJobT{
+		upload:   upload,
+		dbHandle: uploadReq.API.dbHandle,
+		Now:      timeutil.Now,
+	}
+
 	err = uploadJobT.triggerUploadNow()
 	if err != nil {
 		return
@@ -491,7 +493,7 @@ func (tableUploadReq TableUploadReqT) validateReq() error {
 	return nil
 }
 
-func (uploadReq UploadReqT) generateQuery(selectedFields string) string {
+func (uploadReq *UploadReqT) generateQuery(selectedFields string) string {
 	return fmt.Sprintf(`
 		SELECT
 		  %s
@@ -506,7 +508,7 @@ func (uploadReq UploadReqT) generateQuery(selectedFields string) string {
 	)
 }
 
-func (uploadReq UploadReqT) validateReq() error {
+func (uploadReq *UploadReqT) validateReq() error {
 	if !uploadReq.API.enabled || uploadReq.API.log == nil || uploadReq.API.dbHandle == nil {
 		return errors.New("warehouse api are not initialized")
 	}
@@ -516,7 +518,7 @@ func (uploadReq UploadReqT) validateReq() error {
 	return nil
 }
 
-func (uploadReq UploadReqT) authorizeSource(sourceID string) bool {
+func (uploadReq *UploadReqT) authorizeSource(sourceID string) bool {
 	var authorizedSourceIDs []string
 	var ok bool
 	sourceIDsByWorkspaceLock.RLock()
@@ -529,7 +531,7 @@ func (uploadReq UploadReqT) authorizeSource(sourceID string) bool {
 	return misc.Contains(authorizedSourceIDs, sourceID)
 }
 
-func (uploadsReq UploadsReqT) authorizedSources() (sourceIDs []string) {
+func (uploadsReq *UploadsReqT) authorizedSources() (sourceIDs []string) {
 	sourceIDsByWorkspaceLock.RLock()
 	defer sourceIDsByWorkspaceLock.RUnlock()
 	var ok bool

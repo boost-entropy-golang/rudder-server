@@ -39,10 +39,10 @@ import (
 	"github.com/mkmik/multierror"
 	"github.com/tidwall/sjson"
 
-	"github.com/rudderlabs/rudder-server/config"
-	"github.com/rudderlabs/rudder-server/services/metric"
+	"github.com/rudderlabs/rudder-go-kit/config"
+	"github.com/rudderlabs/rudder-go-kit/logger"
+	"github.com/rudderlabs/rudder-go-kit/stats/metric"
 	"github.com/rudderlabs/rudder-server/utils/httputil"
-	"github.com/rudderlabs/rudder-server/utils/logger"
 
 	"github.com/thoas/go-funk"
 
@@ -1295,14 +1295,6 @@ func Unique(stringSlice []string) []string {
 		}
 	}
 	return list
-}
-
-// ReverseInt reverses an array of int
-func ReverseInt(s []int) []int {
-	for i, j := 0, len(s)-1; i < len(s)/2; i, j = i+1, j-1 {
-		s[i], s[j] = s[j], s[i]
-	}
-	return s
 }
 
 func UseFairPickup() bool {

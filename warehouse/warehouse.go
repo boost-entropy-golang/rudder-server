@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/rudderlabs/rudder-server/warehouse/logfield"
 	"github.com/samber/lo"
 
@@ -1155,29 +1155,6 @@ func CheckPGHealth(dbHandle *sql.DB) bool {
 	return true
 }
 
-func setConfigHandler(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		pkgLogger.Errorf("[WH]: Error reading body: %v", err)
-		http.Error(w, "can't read body", http.StatusBadRequest)
-		return
-	}
-	defer func() { _ = r.Body.Close() }()
-
-	var kvs []warehouseutils.KeyValue
-	err = json.Unmarshal(body, &kvs)
-	if err != nil {
-		pkgLogger.Errorf("[WH]: Error unmarshalling body: %v", err)
-		http.Error(w, "can't unmarshall body", http.StatusBadRequest)
-		return
-	}
-
-	for _, kv := range kvs {
-		config.Set(kv.Key, kv.Value)
-	}
-	w.WriteHeader(http.StatusOK)
-}
-
 func pendingEventsHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO : respond with errors in a common way
 	pkgLogger.LogRequest(r)
@@ -1462,6 +1439,45 @@ func databricksVersionHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(deltalake.GetDatabricksVersion()))
 }
 
+func fetchTablesHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	defer func() { _ = r.Body.Close() }()
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		pkgLogger.Errorf("[WH]: Error reading body: %v", err)
+		http.Error(w, "can't read body", http.StatusBadRequest)
+		return
+	}
+
+	var connectionsTableRequest warehouseutils.FetchTablesRequest
+	err = json.Unmarshal(body, &connectionsTableRequest)
+	if err != nil {
+		pkgLogger.Errorf("[WH]: Error unmarshalling body: %v", err)
+		http.Error(w, "can't unmarshall body", http.StatusBadRequest)
+		return
+	}
+
+	schemaRepo := repo.NewWHSchemas(dbHandle)
+	tables, err := schemaRepo.GetTablesForConnection(ctx, connectionsTableRequest.Connections)
+	if err != nil {
+		pkgLogger.Errorf("[WH]: Error fetching tables: %v", err)
+		http.Error(w, "can't fetch tables from schemas repo", http.StatusInternalServerError)
+		return
+	}
+	resBody, err := json.Marshal(warehouseutils.FetchTablesResponse{
+		ConnectionsTables: tables,
+	})
+	if err != nil {
+		err := fmt.Errorf("failed to marshall tables to response : %v", err)
+		pkgLogger.Errorf("[WH]: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, _ = w.Write(resBody)
+}
+
 func isUploadTriggered(wh model.Warehouse) bool {
 	triggerUploadsMapLock.RLock()
 	defer triggerUploadsMapLock.RUnlock()
@@ -1517,11 +1533,11 @@ func getConnectionString() string {
 }
 
 func startWebHandler(ctx context.Context) error {
-	srvMux := mux.NewRouter()
+	srvMux := chi.NewRouter()
 
 	// do not register same endpoint when running embedded in rudder backend
 	if isStandAlone() {
-		srvMux.HandleFunc("/health", healthHandler).Methods("GET")
+		srvMux.Get("/health", healthHandler)
 	}
 	if runningMode != DegradedMode {
 		if isMaster() {
@@ -1536,15 +1552,17 @@ func startWebHandler(ctx context.Context) error {
 			}).Handler())
 
 			// triggers upload only when there are pending events and triggerUpload is sent for a sourceId
-			srvMux.HandleFunc("/v1/warehouse/pending-events", pendingEventsHandler).Methods("POST")
+			srvMux.Post("/v1/warehouse/pending-events", pendingEventsHandler)
 			// triggers uploads for a source
-			srvMux.HandleFunc("/v1/warehouse/trigger-upload", triggerUploadHandler).Methods("POST")
-			srvMux.HandleFunc("/databricksVersion", databricksVersionHandler).Methods("GET")
-			srvMux.HandleFunc("/v1/setConfig", setConfigHandler).Methods("POST")
+			srvMux.Post("/v1/warehouse/trigger-upload", triggerUploadHandler)
+			srvMux.Get("/databricksVersion", databricksVersionHandler)
 
 			// Warehouse Async Job end-points
-			srvMux.HandleFunc("/v1/warehouse/jobs", asyncWh.AddWarehouseJobHandler).Methods("POST")          // FIXME: add degraded mode
-			srvMux.HandleFunc("/v1/warehouse/jobs/status", asyncWh.StatusWarehouseJobHandler).Methods("GET") // FIXME: add degraded mode
+			srvMux.Post("/v1/warehouse/jobs", asyncWh.AddWarehouseJobHandler)          // FIXME: add degraded mode
+			srvMux.Get("/v1/warehouse/jobs/status", asyncWh.StatusWarehouseJobHandler) // FIXME: add degraded mode
+
+			// fetch schema info
+			srvMux.Get("/v1/warehouse/fetch-tables", fetchTablesHandler)
 
 			pkgLogger.Infof("WH: Starting warehouse master service in %d", webPort)
 		} else {
@@ -1605,10 +1623,6 @@ func setupDB(ctx context.Context, connInfo string) error {
 		err := errors.New("rudder Warehouse Service needs postgres version >= 10. Exiting")
 		pkgLogger.Error(err)
 		return err
-	}
-
-	if isStandAloneSlave() {
-		dbHandle.SetMaxOpenConns(1)
 	}
 
 	if err = dbHandle.PingContext(ctx); err != nil {

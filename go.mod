@@ -34,7 +34,7 @@ require (
 	github.com/allisson/go-pglock/v2 v2.0.1
 	github.com/apache/pulsar-client-go v0.11.0
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
-	github.com/aws/aws-sdk-go v1.44.330
+	github.com/aws/aws-sdk-go v1.44.331
 	github.com/bugsnag/bugsnag-go/v2 v2.2.0
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cenkalti/backoff/v4 v4.2.1
@@ -51,7 +51,7 @@ require (
 	github.com/gomodule/redigo v1.8.9
 	github.com/google/uuid v1.3.1
 	github.com/hashicorp/go-retryablehttp v0.7.4
-	github.com/hashicorp/golang-lru/v2 v2.0.5
+	github.com/hashicorp/golang-lru/v2 v2.0.6
 	github.com/hashicorp/yamux v0.1.1
 	github.com/iancoleman/strcase v0.3.0
 	github.com/jeremywohl/flatten v1.0.1

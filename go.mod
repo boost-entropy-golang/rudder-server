@@ -40,8 +40,8 @@ require (
 	github.com/allisson/go-pglock/v2 v2.0.1
 	github.com/apache/pulsar-client-go v0.12.0
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
-	github.com/aws/aws-sdk-go v1.50.23
-	github.com/bugsnag/bugsnag-go/v2 v2.2.0
+	github.com/aws/aws-sdk-go v1.50.29
+	github.com/bugsnag/bugsnag-go/v2 v2.2.1
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/confluentinc/confluent-kafka-go/v2 v2.3.0
@@ -90,7 +90,7 @@ require (
 	github.com/samber/lo v1.39.0
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/segmentio/ksuid v1.0.4
-	github.com/snowflakedb/gosnowflake v1.7.2
+	github.com/snowflakedb/gosnowflake v1.8.0
 	github.com/sony/gobreaker v0.5.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cast v1.6.0

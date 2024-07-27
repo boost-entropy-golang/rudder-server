@@ -44,6 +44,7 @@ import (
 	destinationdebugger "github.com/rudderlabs/rudder-server/services/debugger/destination"
 	transformationdebugger "github.com/rudderlabs/rudder-server/services/debugger/transformation"
 	"github.com/rudderlabs/rudder-server/services/dedup"
+	dedupTypes "github.com/rudderlabs/rudder-server/services/dedup/types"
 	"github.com/rudderlabs/rudder-server/services/fileuploader"
 	"github.com/rudderlabs/rudder-server/services/rmetrics"
 	"github.com/rudderlabs/rudder-server/services/rsources"
@@ -613,7 +614,7 @@ func (proc *Handle) Setup(
 		})
 	}
 	if proc.config.enableDedup {
-		proc.dedup = dedup.New(dedup.DefaultPath())
+		proc.dedup = dedup.New()
 	}
 	proc.sourceObservers = []sourceObserver{delayed.NewEventStats(proc.statsFactory, proc.conf)}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -788,7 +789,6 @@ func (proc *Handle) loadConfig() {
 	proc.config.eventSchemaV2Enabled = config.GetBoolVar(false, "EventSchemas2.enabled")
 	proc.config.batchDestinations = misc.BatchDestinations()
 	proc.config.transformTimesPQLength = config.GetIntVar(5, 1, "Processor.transformTimesPQLength")
-	proc.config.transformerURL = config.GetString("DEST_TRANSFORM_URL", "http://localhost:9090")
 	// GWCustomVal is used as a key in the jobsDB customval column
 	proc.config.GWCustomVal = config.GetStringVar("GW", "Gateway.CustomVal")
 
@@ -961,6 +961,7 @@ func (proc *Handle) makeCommonMetadataFromSingularEvent(singularEvent types.Sing
 	commonMetadata := transformer.Metadata{}
 	commonMetadata.SourceID = source.ID
 	commonMetadata.SourceName = source.Name
+	commonMetadata.OriginalSourceID = source.OriginalID
 	commonMetadata.WorkspaceID = source.WorkspaceID
 	commonMetadata.Namespace = proc.namespace
 	commonMetadata.InstanceID = proc.instanceID
@@ -992,6 +993,7 @@ func enhanceWithMetadata(commonMetadata *transformer.Metadata, event *transforme
 	metadata.SourceType = commonMetadata.SourceType
 	metadata.SourceCategory = commonMetadata.SourceCategory
 	metadata.SourceID = commonMetadata.SourceID
+	metadata.OriginalSourceID = commonMetadata.OriginalSourceID
 	metadata.SourceName = commonMetadata.SourceName
 	metadata.WorkspaceID = commonMetadata.WorkspaceID
 	metadata.Namespace = commonMetadata.Namespace
@@ -1706,7 +1708,11 @@ func (proc *Handle) processJobsForDest(partition string, subJobs subJob) *transf
 				p := payloadFunc()
 				messageSize := int64(len(p))
 				dedupKey := fmt.Sprintf("%v%v", messageId, eventParams.SourceJobRunId)
-				if ok, previousSize := proc.dedup.Set(dedup.KeyValue{Key: dedupKey, Value: messageSize}); !ok {
+				ok, previousSize, err := proc.dedup.Set(dedupTypes.KeyValue{Key: dedupKey, Value: messageSize})
+				if err != nil {
+					panic(err)
+				}
+				if !ok {
 					proc.logger.Debugf("Dropping event with duplicate dedupKey: %s", dedupKey)
 					sourceDupStats[dupStatKey{sourceID: source.ID, equalSize: messageSize == previousSize}] += 1
 					continue
@@ -1828,8 +1834,8 @@ func (proc *Handle) processJobsForDest(partition string, subJobs subJob) *transf
 				if id, ok := rudderTyperTPID.(string); ok && id != "" {
 					trackingPlanID = id
 				}
-				if version, ok := rudderTyperTPVersion.(int); ok && version > 0 {
-					trackingPlanVersion = version
+				if version, ok := rudderTyperTPVersion.(float64); ok && version > 0 {
+					trackingPlanVersion = int(version)
 				}
 			}
 			shallowEventCopy.Metadata.TrackingPlanId = trackingPlanID
@@ -2495,6 +2501,7 @@ func (proc *Handle) transformSrcDest(
 	commonMetaData := &transformer.Metadata{
 		SourceID:             sourceID,
 		SourceName:           sourceName,
+		OriginalSourceID:     eventList[0].Metadata.OriginalSourceID,
 		SourceType:           eventList[0].Metadata.SourceType,
 		SourceCategory:       eventList[0].Metadata.SourceCategory,
 		WorkspaceID:          workspaceID,

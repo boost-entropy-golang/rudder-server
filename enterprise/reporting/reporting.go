@@ -662,9 +662,9 @@ func (r *DefaultReporter) Report(ctx context.Context, metrics []*types.PUReporte
 			metric = transformMetricForPII(metric, getPIIColumnsToExclude())
 		}
 
-		eventName := metric.StatusDetail.EventName
-		if len(eventName) > 50 {
-			metric.StatusDetail.EventName = fmt.Sprintf("%s...%s", eventName[:40], eventName[len(eventName)-10:])
+		runeEventName := []rune(metric.StatusDetail.EventName)
+		if len(runeEventName) > 50 {
+			metric.StatusDetail.EventName = fmt.Sprintf("%s...%s", string(runeEventName[:40]), string(runeEventName[len(runeEventName)-10:]))
 		}
 
 		_, err = stmt.Exec(

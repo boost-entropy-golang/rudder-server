@@ -25,6 +25,7 @@ import (
 	"github.com/rudderlabs/rudder-go-kit/config"
 	"github.com/rudderlabs/rudder-go-kit/logger"
 	"github.com/rudderlabs/rudder-go-kit/stats"
+	"github.com/rudderlabs/rudder-go-kit/stats/collectors"
 
 	obskit "github.com/rudderlabs/rudder-observability-kit/go/labels"
 	migrator "github.com/rudderlabs/rudder-server/services/sql-migrator"
@@ -290,6 +291,10 @@ func (edr *ErrorDetailReporter) migrate(c types.SyncerConfig) (*sql.DB, error) {
 		return nil, err
 	}
 	dbHandle.SetMaxOpenConns(edr.maxOpenConnections)
+	err = edr.stats.RegisterCollector(collectors.NewDatabaseSQLStats("error_detail_reporting", dbHandle))
+	if err != nil {
+		edr.log.Errorn("error registering database sql stats", obskit.Error(err))
+	}
 
 	m := &migrator.Migrator{
 		Handle:          dbHandle,
